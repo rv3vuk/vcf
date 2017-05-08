@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+		<meta charset="utf-8">
+	<title>jsVCF</title>
+	<meta name="description" content="Convert VCF file into JSON, vanilla JavaScript, as per https://tools.ietf.org/html/rfc6350 specification">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<style>
+
+* {margin:0;padding:0;}
+
+body{
+	font-family:sans-serif;
+}
+
+.vCards{
+
+}
+
+
+.card{
+	padding:8px;
+	border-radius:8px;
+	border:1px solid #ccc;
+	background-color:#efefef;
+	display:inline-block;
+	position:relative;
+	font-size:16px;
+	margin:8px;
+}
+
+
+
+.card .names,
+.card .company,
+.card .addresses,
+.card .emails,
+.card .phones,
+.card .www,
+.card .comments,
+.card .duplicate
+{
+	position:relative;
+	padding:20px 8px 8px 40px;
+	background-repeat:no-repeat;
+	background-position:left 8px top 8px;
+	background-size:24px;
+	border-top:1px solid #ccc;
+}
+.card .names{
+	background-image:url(media/person.png);
+	background-position:left top;
+	background-size:32px;
+}
+
+.card .company{
+	background-image:url(media/company.png);
+	background-position:left top;
+	background-size:32px;
+}
+
+.card .addresses{
+	background-image:url(media/i-address.png);
+}
+
+.card .emails{
+	background-image:url(media/l_email.gif);
+}
+
+.card .phones{
+	background-image:url(media/tb-call.png);
+}
+
+.card .www{
+	background-image:url(media/l_web.png);
+}
+
+.card .comments{
+	background-image:url(media/stickies.png);
+}
+
+.card .duplicate{
+	background-image:url(media/warning48.png);
+	background-position:left top;
+	background-size:32px;
+	border-bottom:1px solid #ccc;
+}
+
+
+.card .names:before,
+.card .company:before,
+.card .addresses:before,
+.card .emails:before,
+.card .phones:before,
+.card .www:before,
+.card .comments:before,
+.card .duplicate:before
+{
+	font-size:10px;
+	font-weight:bold;
+	position:absolute;
+	top:8px;
+}
+
+.card .names:before{
+	content:"Names";
+}
+
+.card .company:before{
+	content:"Company";
+}
+
+.card .addresses:before{
+	content:"Addresses";
+}
+
+
+.card .emails:before{
+	content:"Emails";
+}
+
+
+.card .phones:before{
+	content:"Phones";
+}
+
+.card .www:before{
+	content:"Web links";
+}
+
+.card .comments:before{
+	content:"Notes";
+}
+
+.card .duplicate:before{
+	content:"Possible duplicate in OWL";
+}
+
+
+</style>
+
+
+<script type="text/javascript">
+//kind of VCARD specification
+//https://tools.ietf.org/html/rfc6350
+//
+
+window.onload=function(){
+	jsVCF=new rv3VCF();
+}//onload
+
+function rv3VCF(){
+var self=this;
+//Setup interface
+	self.vcfSource=document.getElementById('vcfSource');
+
+var vcfConvert = self.vcfConvert=document.getElementById('vcfConvert');
+	vcfConvert.onclick=function(){self.makeJSON()}
+
+	self.vcfJSON=document.getElementById('vcfJSON');
+}
+
+rv3VCF.prototype.makeJSON =function (){
+var self=this;
+var arrayResults = self.arrayResults = [];
+var arrayCards=self.vcfSource.value.split('BEGIN:VCARD');
+var arrayCardsTest=self.vcfSource.value.split('END:VCARD');
+
+
+//Take away strays – empty strings
+	arrayCards = arrayCards.filter(function(n){ return n != '' });
+	arrayCardsTest = arrayCardsTest.filter(function(n){ return n != '' });
+
+	if(arrayCardsTest.length - arrayCards.length != 1){alert('Unmatched "Begin" and "End" tags in your file');return;}
+
+	for(var a=0;a<arrayCards.length;a++){
+	var cardSource=arrayCards[a];
+		var oCard = new VCARD(cardSource);
+		arrayResults.push(oCard);
+	}//a
+
+	self.json=[];
+	for(var a=0;a<arrayResults.length;a++){
+		self.json.push(arrayResults[a].json);
+	}//a
+
+	self.vcfJSON.value=JSON.stringify(self.json);
+
+}//makeJSON
+
+rv3VCF.prototype.showPreview=function(){
+var self=this;
+
+}//
+
+
+
+
+
+function VCARD(rawSource){
+//individual CARD object, get raw source, and then start looking for different properties
+	this.rawLines=rawSource.split(/\r?\n/);
+	this.json={};
+
+//Pretty much all properties that matter
+	this.getNames();
+	this.getDisplayName();
+	this.getCompanyName();
+	this.getItems();
+
+	this.getEmailSpec();
+	this.getAddressSpec();
+	this.getUrlSpec();
+
+	this.getNotes();
+	this.getCategories();
+}//
+
+
+VCARD.prototype.buildPreview=function(){
+var self=this;
+
+var div=rv3ce('div','vCard');
+
+
+}
+
+
+
+VCARD.prototype.getRawValue=function(tag,idx){
+var allLines=this.rawLines;
+var raw='';
+var startLine=(undefined==idx) ? 0 : idx;
+	for(var a=startLine;a<allLines.length;a++){
+		if(allLines[a].indexOf(tag)==0){
+			raw=allLines[a];break;
+		}//if
+	}//a
+
+	return [raw.substring(raw.indexOf(tag)+tag.length), a];
+	//RETURN
+	//raw string minus TAG looked for
+	//a = line number where TAG was found
+}//
+
+
+VCARD.prototype.getItemIndex=function(raw){
+	return parseInt( raw.substring(0,raw.indexOf('.')) );
+}//
+
+
+VCARD.prototype.getEmailObject=function(raw){
+var o={};
+var arrayRaw=raw.split('type=');
+	for(var a=0;a<arrayRaw.length;a++){
+		if(arrayRaw[a].indexOf(':')>-1){
+			var arrayFound=arrayRaw[a].split(':');
+			if(arrayFound[0]!='pref'){o.description=arrayFound[0]}else{o.description='Main'}
+			o.email=arrayFound[1];
+		}//if
+	}//a
+	return o;
+}//getEmailObject
+
+
+VCARD.prototype.getPhoneObject=function(raw){
+var o={};
+var arrayRaw=raw.split('type=');
+	for(var a=0;a<arrayRaw.length;a++){
+		if(arrayRaw[a].indexOf(':')>-1){
+			var arrayFound=arrayRaw[a].split(':');
+			if(arrayFound[0]!='pref'){o.description=arrayFound[0]}else{o.description='Main'}
+			o.number=arrayFound[1];
+		}//if
+	}//a
+	return o;
+}//getPhoneObject
+
+
+VCARD.prototype.getUrlObject=function(raw){
+var o={};
+	o.link='';
+	o.description='Main';
+//DOES it have http
+if(raw.indexOf('http')>-1){
+	o.link=raw.substring(raw.indexOf('http'), raw.length);
+}else{
+	o.link=raw.substring(raw.indexOf(':')+1, raw.length);
+}//if
+
+return o;
+
+}//getUrlObject
+
+
+VCARD.prototype.getAddressObject=function(raw){
+var o={};
+var arrayRaw=raw.split(';');
+//Remove unnecessary "type=" declarations
+for (var a=arrayRaw.length-1; a>=0; a--) {
+	if (arrayRaw[a].indexOf('type=')>-1) {
+		arrayRaw.splice(a, 1);
+		// break;       //<-- Uncomment  if only the first term has to be removed
+	}//if
+}a
+
+//	arrayRaw[0]		post office box
+//	arrayRaw[1]		extended address  (e.g., apartment or suite number)
+	o.address=arrayRaw[2];
+	o.town=arrayRaw[3];
+	o.county=arrayRaw[4];
+	o.post_code=arrayRaw[5];
+	o.country=arrayRaw[6];
+	return o;
+}//getEmailObject
+
+
+
+
+
+VCARD.prototype.getNames=function(){
+var tag='N:';
+var raw=this.getRawValue(tag)[0];
+
+if(raw==''){return;}
+
+var arrayRaw=raw.split(';');
+	if(arrayRaw[0]!=''){this.json.surname=arrayRaw[0]}
+	if(arrayRaw[1]!=''){this.json.name=arrayRaw[1]}
+	if(arrayRaw[2]!=''){this.json.middle=arrayRaw[2]}
+	if(arrayRaw[3]!=''){this.json.prefix=arrayRaw[3]}
+	if(arrayRaw[4]!=''){this.json.suffix=arrayRaw[4]}
+}//getNames
+
+VCARD.prototype.getDisplayName=function(){
+var tag='FN:';
+var raw=this.getRawValue(tag)[0];
+if(raw==''){return;}
+	this.json.displayName=raw;
+}//
+
+VCARD.prototype.getNotes=function(){
+var tag='NOTE:';
+var raw=this.getRawValue(tag)[0];
+if(raw==''){return;}
+	this.json.comments=raw;
+}//
+
+VCARD.prototype.getCategories=function(){
+var tag='CATEGORIES:';
+var raw=this.getRawValue(tag)[0];
+if(raw==''){return;}
+var arrayRaw=raw.split(',');
+	this.json.categories=[];
+	for(var a=0;a<arrayRaw.length;a++){
+		this.json.categories.push(arrayRaw[a]);
+	}//a
+}//
+
+VCARD.prototype.getCompanyName=function(){
+var tag='ORG:';
+var raw=this.getRawValue(tag)[0];
+if(raw==''){return;}
+var arrayRaw=raw.split(';');
+	this.json.company_name=arrayRaw[0];
+}//
+
+VCARD.prototype.getItems=function(){
+//Apple address book, where everything is a sequential item1,item2, itemX
+var tag='item';
+var raw='';
+var idx=(undefined!=this.idx)?this.idx : undefined;
+
+	if(undefined!=idx){//"item1" already processed
+		raw=this.getRawValue(tag + idx)[0];
+	}else{//find item1
+		raw=this.getRawValue(tag)[0];
+		idx=this.getItemIndex(raw);
+	}//if
+
+if(raw==''){return;}//No "items" found, move onto next
+
+	this.idx=idx;//Item "X" found, keep reference of "X"
+
+var subTag=tag+idx;//itemX
+
+	raw=this.getRawValue(subTag+'.'+'EMAIL;')[0];
+	if(raw!=''){//itemX.EMAIL; is found
+		this.getEmailItem(raw,subTag);
+	}
+
+	raw=this.getRawValue(subTag+'.'+'TEL')[0];
+	if(raw!=''){
+		this.getPhoneItem(raw,subTag);
+	}
+
+	raw=this.getRawValue(subTag+'.'+'ADR')[0];
+	if(raw!=''){
+		this.getAddressItem(raw,subTag);
+	}
+
+	raw=this.getRawValue(subTag+'.'+'URL')[0];
+	if(raw!=''){
+		this.getUrlItem(raw,subTag);
+	}//if
+
+this.idx++;//Move onto next item number
+this.getItems();
+
+}//
+
+VCARD.prototype.getEmailItem=function(raw,subTag){
+//There are emails
+	if(undefined!=this.json.emails){
+	var emails =  this.json.emails;
+	}else{
+	var emails =  this.json.emails = [];
+	}//if
+var email=this.getEmailObject(raw);
+	emails.push(email);
+
+//Look for Apple Address Book (Contacts.app) description
+	raw=this.getRawValue(subTag+'.'+'X-ABLabel:')[0];
+if(raw==''){return;}
+	email.description=raw;
+}//
+
+VCARD.prototype.getPhoneItem=function(raw,subTag){
+//There are phones
+	if(undefined!=this.json.phones){
+	var phones =  this.json.phones;
+	}else{
+	var phones =  this.json.phones = [];
+	}//if
+var phone=this.getPhoneObject(raw);
+	phones.push(phone);
+
+//Look for address book description
+	raw=this.getRawValue(subTag+'.'+'X-ABLabel:')[0];
+if(raw==''){return;}
+	phone.description=raw;
+}//
+
+VCARD.prototype.getAddressItem=function(raw,subTag){
+//There are addresses
+var addresses=[];
+	if(undefined!=this.json.addresses){
+	var addresses =  this.json.addresses;
+	}else{
+	var addresses =  this.json.addresses = [];
+	}//if
+var address=this.getAddressObject(raw);
+	addresses.push(address);
+
+//Look for address book description
+	raw=this.getRawValue(subTag+'.'+'X-ABLabel:')[0];
+if(raw==''){return;}
+	address.description=raw;
+}//
+
+VCARD.prototype.getUrlItem=function(raw,subTag){
+//There are links
+var www=[];
+	if(undefined!=this.json.www){
+	var www =  this.json.www;
+	}else{
+	var www =  this.json.www = [];
+	}//if
+var link=this.getUrlObject(raw);
+	www.push(link);
+
+//Look for address book description
+	raw=this.getRawValue(subTag+'.'+'X-ABLabel:')[0];
+if(raw==''){return;}
+	if(raw.indexOf('_$!')==-1){//Apple's stupid predefined label for "Home Page"! Pointless!!!
+		link.description=raw;
+	}//if
+}//
+
+
+
+
+VCARD.prototype.getEmailSpec=function(idx){
+//Per SPEC email, where tag starts with "EMAIL;"
+var tag='EMAIL;';
+var oRaw=this.getRawValue(tag,idx);
+var raw=oRaw[0];
+
+	if(raw==''){return;}
+
+var email=this.getEmailObject(raw);
+	if(undefined!=this.json.emails){
+	var emails = this.json.emails;
+	}else{
+	var emails = this.json.emails = [];
+	}
+	emails.push(email);
+
+	this.getEmailSpec(parseInt(oRaw[1]+1));
+}//
+
+VCARD.prototype.getAddressSpec=function(idx){
+//Per SPEC address, where tag starts with "ADR"
+var tag='ADR';
+var oRaw=this.getRawValue(tag,idx);
+var raw=oRaw[0];
+
+	if(raw==''){return;}
+
+var address=this.getAddressObject(raw);
+	if(undefined!=this.json.addresses){
+	var addresses = this.json.addresses;
+	}else{
+	var addresses = this.json.addresses = [];
+	}
+	addresses.push(address);
+
+	this.getAddressSpec(parseInt(oRaw[1]+1));
+}//
+
+VCARD.prototype.getUrlSpec=function(idx){
+//Per SPEC address, where tag starts with "URL"
+var tag='URL';
+var oRaw=this.getRawValue(tag,idx);
+var raw=oRaw[0];
+
+	if(raw==''){return;}
+
+var link=this.getUrlObject(raw);
+	if(undefined!=this.json.www){
+	var www = this.json.www;
+	}else{
+	var www = this.json.www = [];
+	}
+	www.push(link);
+
+	this.getUrlSpec(parseInt(oRaw[1]+1));
+}//
+
+
+
+
+
+
+</script>
+</head>
+
+<body>
+
+<div>
+	<textarea id="vcfSource" style="width:100%;height:45%;"></textarea>
+</div>
+
+<div>
+	<button id="vcfConvert">Turn to JSON</button>
+</div>
+
+<div>
+	<textarea id="vcfJSON"></textarea>
+</div>
+
+<div class="vCards">
+
+<div class="card">
+	<div class="duplicate">
+		<a href="#">Some Name</a>
+	</div>
+	<div class="owlCtrl"><input type="checkbox" checked /> Import</div>
+	<div class="owlCtrl">
+		<label><input type="radio"  /> Import</label>
+		<label><input type="radio" checked /> Merge</label>
+	</div>
+	<div class="company">Company</div>
+	<div class="names">Name Surname</div>
+	<div class="addresses">123 Some street,<br>Brighton<br>AB1 2CD</div>
+	<div class="emails">home: email@net.com<br>work: another.net.com</div>
+	<div class="phones">home: 0123789456<br>mobile:07779944564</div>
+	<div class="www">Main: www.web.com<br>Other: other.net.com</div>
+	<div class="comments">Blah, blah<br>Other: other.net.com</div>
+</div>
+
+</div>
+
+
+</body>
+</html>
